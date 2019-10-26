@@ -133,13 +133,6 @@ abstract class AbstractParser {
         return v;
     }
 
-    protected SemValue svTypes(Tree.TypeLit... types) {
-        var v = new SemValue(SemValue.Kind.FIELD_LIST, types.length == 0 ? Pos.NoPos : types[0].pos);//todo
-        v.typeList = new ArrayList<>();
-        v.typeList.addAll(Arrays.asList(types));
-        return v;
-    }
-
     protected SemValue svType(Tree.TypeLit type) {
         var v = new SemValue(SemValue.Kind.TYPE, type == null ? Pos.NoPos : type.pos);
         v.type = type;
