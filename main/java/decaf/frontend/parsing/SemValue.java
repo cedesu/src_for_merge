@@ -81,8 +81,6 @@ class SemValue {
     // a raw var (local/member) is stored using two variables: type, id
     List<Tree.LocalVarDef> varList; // a list can only contain local vars
 
-    List<Tree.TypeLit> typeList; // a list can only contain local vars
-
     Tree.TypeLit type;
 
     Tree.Stmt stmt;
@@ -121,7 +119,7 @@ class SemValue {
                 case Tokens.THIS -> "keyword  : this";
                 case Tokens.VOID -> "keyword  : void";
                 case Tokens.WHILE -> "keyword  : while";
-                case Tokens.STATIC -> "keyword : static";//kanlaibuyaojin
+                case Tokens.STATIC -> "keyword : static";
                 case Tokens.INT_LIT -> "int literal : " + intVal;
                 case Tokens.BOOL_LIT -> "bool literal : " + boolVal;
                 case Tokens.STRING_LIT -> "string literal : " + StringUtils.quote(strVal);
