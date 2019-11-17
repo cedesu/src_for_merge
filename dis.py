@@ -31,7 +31,7 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
-from torch.nn import CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss, MSELoss, BCELoss
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import matthews_corrcoef, f1_score
 
@@ -66,7 +66,8 @@ intv=None#psteps//(split+1)
 sr_now=1.
 wr_now=1.
 
-
+distill_old=12
+distill_new=12
 
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
@@ -893,7 +894,7 @@ class prune_function:
                 output_config_file = os.path.join('/home/yujwang/maoyh/svd_weight_large', CONFIG_NAME)'''
             config = BertConfig(output_config_file)
             model = BertForSequenceClassification(config, num_labels=num_labels)
-            model.load_state_dict(torch.load(output_model_file))
+            model.load_state_dict(torch.load(output_model_file),strict=False)
 
         if args.fp16:
             model.half()
@@ -912,6 +913,15 @@ class prune_function:
         self.output_mode=output_mode
         self.num_labels=num_labels
         self.n_gpu=n_gpu
+
+        #model_t
+        distill_weight='/home/yujwang/maoyh/sst_distill_weight'
+        distill_weight_file=os.path.join(distill_weight, WEIGHTS_NAME)
+        model_t = BertForSequenceClassification(config, num_labels=num_labels)
+        model_t.eval()
+        model_t.load_state_dict(torch.load(distill_weight_file),strict=False)
+        self.model_t=model_t
+        print('init finish')
 
     def eval_pt(self,sr,wr,target_prune_rate):
         print('start eval_pt',sr,wr)
@@ -1022,6 +1032,7 @@ class prune_function:
         layer_num = 12
 
         model=self.model#copy.deepcopy(self.model)
+        model_t=self.model_t
         param_optimizer = list(model.named_parameters())
         no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
@@ -1084,6 +1095,9 @@ class prune_function:
                     sr_now, wr_now = sr_target, wr_target
                 prune_rate=[target_prune_rate[i]**(1.*sr_now/split) for i in range(48)] # sr's temporary prune rate is assigned here
 
+                input_ids, input_mask, segment_ids, label_ids = batch
+                #with torch.no_grad():
+                #    logits_t = model_t(input_ids, segment_ids, input_mask, p_type=['vannila']*48, p_rate=[1.]*48)
                 batch = tuple(t.to(device) for t in batch)
                 input_ids, input_mask, segment_ids, label_ids = batch
 
@@ -1096,6 +1110,14 @@ class prune_function:
                 elif output_mode == "regression":
                     loss_fct = MSELoss()
                     loss = loss_fct(logits.view(-1), label_ids.view(-1))
+                sig=torch.nn.Sigmoid()
+                if False:#distill
+                    loss_dst=BCELoss()
+                    loss+=0*loss_dst(sig(logits.view(-1)),sig(logits_t.view(-1).cuda()))
+                    #distill hidden
+                    loss_dst=MSELoss()
+                    for layer_now in range(distill_new):
+                        loss+=0*loss_dst(model.bert.encoder.layer[layer_now].out,model_t.bert.encoder.layer[layer_now*int(distill_old/distill_new)].out.cuda())
 
                 if n_gpu > 1:
                     loss = loss.mean()  # mean() to average on multi-gpu.
@@ -1395,9 +1417,10 @@ def main():
     parser.add_argument("--lw",
                         default=0,
                         type=int,
-                        help="svd_ratio times in all 64 times.")
+                        help="test rho")
     parser.add_argument("--embd_r",
-                        default=1.,
+                        default=0.4,
+                        required=True,
                         type=float,
                         help="svd_ratio times in all 64 times.")
     args = parser.parse_args()
